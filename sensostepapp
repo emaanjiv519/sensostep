@@ -1,0 +1,414 @@
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg)
+import tkinter as tk
+import simplepyble
+from customtkinter import *
+from tkinter.font import Font
+from PIL import Image, ImageTk, ImageEnhance
+ 
+# sensor data
+MAX_DATA_POINTS = 100
+sensor_data = [0, 0, 0, 0, 0]
+sensor_chars = ["00001021-0000-1000-8000-00805f9b34fb",
+                "00001022-0000-1000-8000-00805f9b34fb",
+                "00001023-0000-1000-8000-00805f9b34fb",
+                "00001024-0000-1000-8000-00805f9b34fb",
+                "00001025-0000-1000-8000-00805f9b34fb"]
+
+sensor_colors = ["red", "green", "blue", "purple", "yellow"]
+
+notifications_enabled = False
+
+notification_counts = [0, 0, 0, 0, 0]  # For each sensor
+
+def notify_sensor1(sensor_reading):
+    global sensor_data
+    sensor_value = int.from_bytes(sensor_reading, 'little')
+    sensor_data[0] = sensor_value
+
+
+def notify_sensor2(sensor_reading):
+    global sensor_data
+    sensor_value = int.from_bytes(sensor_reading, 'little')
+    sensor_data[1] = sensor_value
+
+
+def notify_sensor3(sensor_reading):
+    global sensor_data
+    sensor_value = int.from_bytes(sensor_reading, 'little')
+    sensor_data[2] = sensor_value
+
+
+def notify_sensor4(sensor_reading):
+    global sensor_data
+    sensor_value = int.from_bytes(sensor_reading, 'little')
+    sensor_data[3] = sensor_value
+    print_all_sensor_data()
+
+def notify_sensor5(sensor_reading):
+    global sensor_data
+    sensor_value = int.from_bytes(sensor_reading, 'little')
+    sensor_data[4] = sensor_value
+    print_all_sensor_data()
+
+
+def print_all_sensor_data():
+    print(f"{sensor_data[0]}, {sensor_data[1]}, {sensor_data[2]}, {sensor_data[3]}, {sensor_data[4]}")
+
+
+# function to show window with notification
+def show_notification(sensor_index):
+    global notification_counts
+
+    sensor_names = ["Top Left", "Middle Arch", "Top Right", "Bottom Left", "Bottom Right"]
+    notif = f"""The {sensor_names[sensor_index]} of your foot 
+    is experiencing the most pressure"""
+
+    notification_counts[sensor_index] += 1
+    
+    # Create a new window for the notification
+    notification_window = CTkToplevel(root)
+    notification_window.title("Sensor Notification")
+    notification_window.geometry("400x100")
+    
+    label = CTkLabel(notification_window, text = notif, font=("Century Gothic", 15, 'bold'))
+    label.pack(pady=10)
+
+    # Automatically close the notification after 3 seconds
+    notification_window.after(3000, notification_window.destroy)
+
+
+# function to check which sensor is more than the others
+def check_highest_sensor():
+     if not notifications_enabled:
+        return
+     
+     max_value = max(sensor_data)
+     max_sensor_index = sensor_data.index(max_value)
+    
+    # Show a notification if the max value is updated
+     show_notification(max_sensor_index)
+    
+    # Schedule the next check in 10 seconds
+     root.after(10000, check_highest_sensor)
+
+# helper function to notify after graph button is clicked
+def notifyafter():
+    global notifications_enabled
+    # Only show notifications if the "See Graph" button is clicked
+    if notifications_enabled:
+        check_highest_sensor()
+
+# function to plot data using sensors and bluetooth connection
+def plot():
+    global notifications_enabled
+
+    # Create Canvas
+    canvas = FigureCanvasTkAgg(fig, master=root)  
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    if __name__ == "__main__":
+        adapters = simplepyble.Adapter.get_adapters()
+
+        if len(adapters) == 0:
+            print("No adapters found")
+
+        # Query the user to pick an adapter
+        print("Please select an adapter:")
+        for i, adapter in enumerate(adapters):
+            print(f"{i}: {adapter.identifier()} [{adapter.address()}]")
+
+        choice = int(input("Enter choice: "))
+        adapter = adapters[choice]
+
+        print(f"Selected adapter: {adapter.identifier()} [{adapter.address()}]")
+
+        adapter.set_callback_on_scan_start(lambda: print("Scan started."))
+        adapter.set_callback_on_scan_stop(lambda: print("Scan complete."))
+        adapter.set_callback_on_scan_found(
+            lambda peripheral: print(f"Found {peripheral.identifier()} [{peripheral.address()}]"))
+
+        # Scan for 5 seconds
+        adapter.scan_for(5000)
+        peripherals = adapter.scan_get_results()
+
+        # Query the user to pick a peripheral
+        print("Please select a peripheral:")
+        for i, peripheral in enumerate(peripherals):
+            print(f"{i}: {peripheral.identifier()} [{peripheral.address()}]")
+
+        choice = int(input("Enter choice: "))
+        peripheral = peripherals[choice]
+
+        print(f"Connecting to: {peripheral.identifier()} [{peripheral.address()}]")
+        peripheral.connect()
+
+        print("Successfully connected, listing services...")
+        services = peripheral.services()
+        service_characteristic_pair = []
+        for service in services:
+            for characteristic in service.characteristics():
+                service_characteristic_pair.append((service.uuid(), characteristic.uuid()))
+
+        # Query the user to pick a service/characteristic pair
+        print("Please select a service/characteristic pair:")
+        for i, (service_uuid, characteristic) in enumerate(service_characteristic_pair):
+            print(f"{i}: {service_uuid} {characteristic}")
+            if str(characteristic) == sensor_chars[0]:
+                contents = peripheral.notify(service_uuid, characteristic, lambda data: notify_sensor1(data))
+                print(f"{characteristic} setup for notify")
+            elif str(characteristic) == sensor_chars[1]:
+                contents = peripheral.notify(service_uuid, characteristic, lambda data: notify_sensor2(data))
+                print(f"{characteristic} setup for notify")
+            elif str(characteristic) == sensor_chars[2]:
+                contents = peripheral.notify(service_uuid, characteristic, lambda data: notify_sensor3(data))
+                print(f"{characteristic} setup for notify")
+            elif str(characteristic) == sensor_chars[3]:
+                contents = peripheral.notify(service_uuid, characteristic, lambda data: notify_sensor4(data))
+                print(f"{characteristic} setup for notify")
+            elif str(characteristic) == sensor_chars[4]:
+                contents = peripheral.notify(service_uuid, characteristic, lambda data: notify_sensor5(data))
+                print(f"{characteristic} setup for notify")
+
+        plt.ion()  # turning interactive mode on
+
+        notifications_enabled = True
+
+        notifyafter()
+
+        # preparing the data
+        y1 = [0]
+        y2 = [0]
+        y3 = [0]
+        y4 = [0]
+        y5 = [0]
+        x = [0]
+
+        # plotting the first frame
+        graph1 = plt.plot(x, y1, color=sensor_colors[0], label="Top Left")[0]
+        graph2 = plt.plot(x, y2, color=sensor_colors[1], label="Middle Arch")[0]
+        graph3 = plt.plot(x, y3, color=sensor_colors[2], label="Top Right")[0]
+        graph4 = plt.plot(x, y4, color=sensor_colors[3], label="Bottom Left")[0]
+        graph5 = plt.plot(x, y5, color=sensor_colors[4], label="Bottom Right")[0]
+        plt.ylim(0, 1024)
+        # Naming the x-axis, y-axis and the whole graph
+        plt.xlabel("Reading #")
+        plt.ylabel("Sensor A/D Reading (out of 1024 bits)")
+        plt.title("Pressure Sensors")
+        # Adding legend, which helps us recognize the curve according to it's color
+        plt.legend()
+        plt.pause(1)
+
+        # the update loop
+        while True:
+            # updating the data
+            y1.append(sensor_data[0])
+            y2.append(sensor_data[1])
+            y3.append(sensor_data[2])
+            y4.append(sensor_data[3])
+            y5.append(sensor_data[4])
+            x.append(x[-1] + 1)
+            y1 = y1[-MAX_DATA_POINTS:]      # limit plot to have MAX_DATA_POINTS (earlier points scroll off to the left)
+            y2 = y2[-MAX_DATA_POINTS:]
+            y3 = y3[-MAX_DATA_POINTS:]
+            y4 = y4[-MAX_DATA_POINTS:]
+            y5 = y5[-MAX_DATA_POINTS:]
+            x = x[-MAX_DATA_POINTS:]
+
+            # removing the older graph
+            graph1.remove()
+            graph2.remove()
+            graph3.remove()
+            graph4.remove()
+            graph5.remove()
+
+            # plotting newer graph
+            graph1 = plt.plot(x, y1, color=sensor_colors[0], label="Top Left")[0]
+            graph2 = plt.plot(x, y2, color=sensor_colors[1], label="Middle Arch")[0]
+            graph3 = plt.plot(x, y3, color=sensor_colors[2], label="Top Right")[0]
+            graph4 = plt.plot(x, y4, color=sensor_colors[3], label="Bottom Left")[0]
+            graph5 = plt.plot(x, y5, color=sensor_colors[4], label="Bottom Right")[0]
+            plt.xlim(x[0], x[-1])
+
+            # calling pause function for 0.25 seconds
+            plt.pause(0.25)
+
+        peripheral.disconnect()
+
+def resultswindow():
+    results_window = CTkToplevel(root)
+    results_window.geometry('425x130')
+    results_window.title('Results')
+    sensor_names = ["Top Left", "Middle Arch", "Top Right", "Bottom Left", "Bottom Right"]
+    
+    result_text = "\n".join([f"{sensor_names[i]}: {notification_counts[i]} notifications"
+                            for i in range(len(notification_counts))])
+
+    result_label = CTkLabel(results_window, text=result_text, font=("Century Gothic", 20))
+    result_label.pack(padx=10, pady=10)
+
+def aboutuspage():
+    abtuswindow = CTkToplevel(root)
+    abtuswindow.geometry('900x250')
+    abtuswindow.title("About Us")
+
+    abtuswindow.attributes('-topmost', True)
+    abtusframe = CTkScrollableFrame(abtuswindow,
+        orientation="vertical",width=900, height=250)
+    abtusframe.pack()
+
+    aboutuslabel = CTkLabel(abtusframe, text = '''
+About Us:
+                            
+SensoStep is a wearable product aimed to show the user 
+at what parts of their foot they are putting the most 
+pressure. Click the button, "See Graph", to see SensoStep 
+in action and see where most of the pressure in your foot lies.
+You will get notifications about which part of your foot is
+using more pressure. Don't forget to click on the results page 
+for more information on your session!
+                        
+Engineers:
+Christianson, Victoria (Bio Engineering)
+Dorer, Sally (Chemical Engineering)
+Gross, Angela (Chemical Engineering)
+Jivani, Emaan (Computer Engineering)
+Kathori, Mohak (Bio Engineering)
+''', font = ("Century Gothic", 25), text_color= '#021426')
+    aboutuslabel.pack()
+
+# instructions
+# instructions
+instructions_shown = False
+ilable = None
+scrollable_frame = None
+
+def instructions():
+    global instructions_shown, ilable, scrollable_frame
+    
+    if instructions_shown:
+        # Destroy the label and frame if instructions are shown
+        if ilable:
+            ilable.pack_forget()
+        if scrollable_frame:
+            scrollable_frame.pack_forget()
+
+        instructions_shown = False
+    else:
+        # Create the scrollable frame and label when showing instructions
+        scrollable_frame = CTkScrollableFrame(root, height=150, width=800, 
+                                              corner_radius=15, bg_color="#e9ecef")
+        scrollable_frame.pack(padx=0, pady=0)
+
+        ilable = CTkLabel(scrollable_frame, text='''
+Instructions for Use:
+1. Slide SensoStep insole into bottom of tennis shoe.
+2. Put on ankle wrap.
+3. Attach battery to ankle wrap.
+4. Plug battery in with cord provided.
+5. Press "See Graph" button to display the graph.
+6. To connect to Bluetooth, press '0' next to 'Enter Choice'
+    and press enter.
+7. Look for 'Pressure Sensors' and type in the number
+   next to it after 'Enter Choice' and press enter
+8. Now walk, run, jump, or simply stand!
+9. Data will be drawn on the graph!
+10. Throughout your session, notifications will appear to tell 
+   you where the most pressure in your foot is detected.
+11. After your session is over, click the results page to see 
+    how many times each part of your foot exerted more pressure!          
+''', font=('Century Gothic', 20, 'bold'))
+        ilable.pack(padx=10, pady=20)
+        
+        instructions_shown = True
+
+def exitapp():
+    root.destroy()
+
+# Initialize Tkinter and Matplotlib Figure
+root = CTk()
+root.title('SensoStep Monitoring Web Application')
+fig, ax = plt.subplots()
+set_appearance_mode('light')
+ 
+# Tkinter Application
+frame = CTkFrame(root)
+label = CTkLabel(frame, text = "Welcome to SensoStep!", font = ("Century Gothic", 100, "bold"),
+                 text_color='#021426', bg_color="#e9ecef")
+label.pack()
+frame.pack(padx = 60, pady = 30)
+ 
+# buttons
+font = ("Century Gothic", 35)
+
+# button images
+
+# - about us button
+abtusicon = Image.open("aicon.png")
+abtusicon = abtusicon.resize((40,40))
+abtusicon_tk = ImageTk.PhotoImage(abtusicon)
+
+# - instructions
+instructicon = Image.open("iicon.png")
+instructicon = instructicon.resize((40,40))
+instructicon_tk = ImageTk.PhotoImage(instructicon)
+
+# - graph
+graphicon = Image.open("gicon.png")
+graphicon = graphicon.resize((40,40))
+graphicon_tk = ImageTk.PhotoImage(graphicon)
+
+# - results
+resultsicon = Image.open("ricon.png")
+resultsicon = resultsicon.resize((40,40))
+resultsicon_tk = ImageTk.PhotoImage(resultsicon)
+
+# - exit
+exiticon = Image.open("eicon.png")
+exiticon = exiticon.resize((40,40))
+exiticon_tk = ImageTk.PhotoImage(exiticon)
+
+
+# button frame
+buttonframe = CTkFrame(root, corner_radius=15)
+buttonframe.pack(padx=0, pady=30)
+
+
+# about us
+abtusbutton = CTkButton(buttonframe, text = "About Us", font = font, corner_radius=100,
+                    hover_color='#427aa1', command = aboutuspage, fg_color="#021426",
+                    text_color='#ffffff',
+                    image = abtusicon_tk)
+abtusbutton.pack(side=tk.LEFT, padx=10)
+
+# instructions
+instructbutton = CTkButton(buttonframe, text = "Instructions", font = font, corner_radius=100,
+                    hover_color='#427aa1', command = instructions, fg_color="#021426",
+                    text_color='#ffffff',
+                    image = instructicon_tk)
+instructbutton.pack(side=tk.LEFT, padx=10)
+
+# plot
+plotbutton = CTkButton(buttonframe, text = "See Graph", font = font, corner_radius=100,
+                    hover_color='#427aa1', command = plot, fg_color="#021426",
+                    text_color='#ffffff',
+                    image = graphicon_tk)
+plotbutton.pack(side=tk.LEFT, padx=10)
+
+# results
+resultbutton = CTkButton(buttonframe, text = "Results", font = font, corner_radius=100,
+                    hover_color='#427aa1', command = resultswindow, fg_color="#021426",
+                    text_color='#ffffff',
+                    image = resultsicon_tk)
+resultbutton.pack(side=tk.LEFT, padx=10)
+
+exitbutton = CTkButton(buttonframe, text = "Exit", font = font, corner_radius=100,
+                    hover_color='#427aa1', command = exitapp, fg_color="#021426",
+                    text_color='#ffffff',
+                    image = exiticon_tk)
+exitbutton.pack(side=tk.LEFT, padx=10)
+
+
+
+check_highest_sensor()
+
+root.mainloop()
